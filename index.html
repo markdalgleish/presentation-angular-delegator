@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <title>Angular Delegator</title>
+    <link href="http://fonts.googleapis.com/css?family=Lato:300,400" rel="stylesheet" type="text/css">
+    <link rel="stylesheet" href="styles/styles.css"/>
+  </head>
+  <body>
+    <article>
+      <section>
+        <h1>Angular Delegator</h1>
+        <h3>The Story of the Missing Abstraction</h3><img src="images/profile.jpg" class="avatar">
+        <h3><a href="http://twitter.com/markdalgleish">@markdalgleish</a></h3>
+      </section>
+      <section>
+        <h1 class="bullet">The Problem</h1>
+        <h3 class="bullet">Splitting large services into smaller ones</h3>
+        <ul>
+          <li>It's good software design, but...</li>
+          <li>It requires a lot of glue code and repetitive tests.</li>
+        </ul>
+      </section>
+      <section data-bespoke-state="emphatic">
+        <h1 class="bullet">The Missing Abstraction</h1>
+        <h2 class="bullet">Prologue</h2>
+        <h3 class="bullet">We Were Writing a Search App</h3>
+      </section>
+      <section>
+        <h2 class="bullet">Filters Model</h2>
+        <h3 class="bullet">The core model in our app</h3>
+        <hr>
+        <pre class="bullet"><code class="language-javascript">app.value('filters', {
+
+  keywords: "",
+  sortBy: "relevance",
+  workTypes: [],
+  ...
+  
+});
+</code></pre>
+      </section>
+      <section>
+        <h2 class="bullet">URL Parameters</h2>
+        <h3 class="bullet">Filters model needs to be serialized and deserialized:</h3>
+        <pre class="bullet"><code class="language-clike">/results?keywords=foo&amp;workTypes=0,1,2
+</code></pre>
+      </section>
+      <section>
+        <h2 class="bullet">Whenever the route changes</h2>
+        <h3 class="bullet">We need to sync the filters model with the URL</h3>
+        <pre class="bullet"><code class="language-javascript">$rootScope.$on('$stateChangeSuccess',
+
+  function(event, toState, toParams) {
+    _.extend(filters, ParamsAdapter.toFilters(toParams));
+  }
+  
+);</code></pre>
+        <hr>
+        <p class="bullet">(We're using <a href="https://github.com/angular-ui/ui-router">ui-router</a>)</p>
+      </section>
+      <section>
+        <h2 class="bullet name">ParamsAdapter</h2>
+        <h3 class="bullet">Two methods:</h3>
+        <ul>
+          <li>toParams</li>
+          <li>fromParams</li>
+        </ul>
+      </section>
+      <section>
+        <h2 class="bullet">It started small</h2>
+        <h3 class="bullet">Then it grew and grew</h3>
+        <p class="bullet">And the tests grew. And grew.</p>
+        <p class="bullet">It started to suck.</p>
+      </section>
+      <section>
+        <h2 class="bullet">Separate those concerns!</h2>
+        <h3 class="bullet">Let's break it up into smaller services</h3>
+        <ul>
+          <li>KeywordsParamsAdapter</li>
+          <li>SalaryParamsAdapter</li>
+          <li>WorkTypeParamsAdapter</li>
+          <li>etc...</li>
+        </ul>
+      </section>
+      <section>
+        <h2 class="bullet">We're On The Right Track...</h2>
+        <h3 class="bullet">Lots of small services with the same interface</h3>
+        <p class="bullet">So what does ParamsAdapter look like?</p>
+      </section>
+      <section>
+        <pre><code class="language-javascript">app.service('ParamsAdapter', function(Foo, Bar, Baz) {
+
+  this.toFilters = function(params) {
+    return _.extend({},
+      Foo.toFilters(params),
+      Bar.toFilters(params),
+      Baz.toFilters(params)
+    );
+  };
+  
+  this.fromFilters = function(filters) {
+    return _.extend({},
+      Foo.fromFilters(filters),
+      Bar.fromFilters(filters),
+      Baz.fromFilters(filters)
+    );
+  };
+  
+});
+</code></pre>
+      </section>
+      <section>
+        <h2 class="bullet">This seemed verbose, but OK</h2>
+        <h3 class="bullet">Until we wrote the tests</h3>
+        <ul>
+          <li>Lots of repetitive boilerplate</li>
+          <li>Adding new adapters = lots of copy + paste</li>
+        </ul>
+      </section>
+      <section data-bespoke-state="emphatic">
+        <h1 class="bullet">The Missing Abstraction</h1>
+        <h2 class="bullet">Act One</h2>
+        <h3 class="bullet">Configuring Service Arrays</h3>
+      </section>
+      <section>
+        <h2 class="bullet">Arrays of services</h2>
+        <h3 class="bullet">Configured with Angular Delegator</h3>
+        <hr>
+        <pre class="bullet"><code class="language-javascript">app.config(function(DelegatorProvider) {
+
+  DelegatorProvider.set('ParamsAdapters', [
+    'KeywordsParamsAdapter',
+    'SalaryParamsAdapter',
+    'WorkTypeParamsAdapter',
+    ...
+  ]);
+  
+});
+</code></pre>
+      </section>
+      <section>
+        <h2 class="bullet">We can now reference this service array</h2>
+        <h3 class="bullet">Inside our 'ParamsAdapter' service</h3>
+      </section>
+      <section>
+        <pre class="bullet"><code class="language-javascript">app.service('ParamsAdapter', function(Delegator) {
+
+  this.toFilters = function(params) {
+  
+    // Merge the results of each service into a single object:
+    return _.extend.apply(_,
+      _.map(Delegator.get('ParamsAdapters'), function(delegate) {
+        return delegate.toFilters(params);
+      })
+    );
+    
+  };
+  
+  // ...and again for 'fromFilters'
+  
+});
+</code></pre>
+      </section>
+      <section>
+        <h3 class="bullet">This is better, but it's starting to look like</h3>
+        <h2 class="bullet">Framework code</h2>
+      </section>
+      <section data-bespoke-state="emphatic">
+        <h1 class="bullet">The Missing Abstraction</h1>
+        <h2 class="bullet">Act Two</h2>
+        <h3 class="bullet">Angular Delegator Gets Smarter</h3>
+      </section>
+      <section>
+        <h2 class="bullet">Let's work at a higher level</h2>
+        <h3 class="bullet">We're manually creating a service that talks to 'Delegator'</h3>
+      </section>
+      <section>
+        <h1 class="bullet">What if...</h1>
+        <h3 class="bullet">Angular Delegator could create the service for us?</h3>
+      </section>
+      <section>
+        <pre class="bullet"><code class="language-javascript">app.config(function(DelegatorProvider) {
+
+  DelegatorProvider.service('ParamsAdaptersDelegator', {
+  
+    interface: {
+      'toFilters': 'merge',
+      'fromFilters': 'merge'
+    },
+    
+    delegates: [
+      'KeywordsParamsAdapter',
+      'SalaryParamsAdapter',
+      'WorkTypeParamsAdapter',
+      ...
+    ]
+    
+  );
+  
+});
+</code></pre>
+      </section>
+      <section>
+        <h2 class="bullet">Now we're free to delete code</h2>
+        <h3 class="bullet">We no longer need 'ParamsAdapter' or its test</h3>
+      </section>
+      <section data-bespoke-state="emphatic">
+        <h1 class="bullet">The Missing Abstraction</h1>
+        <h2 class="bullet">Act Three</h2>
+        <h3 class="bullet">Anuglar Delegator Proves Itself</h3>
+      </section>
+      <section>
+        <h2 class="bullet">We now have a clean way to break up our services</h2>
+        <h3 class="bullet">We started to notice other uses of this pattern</h3>
+      </section>
+      <section>
+        <h1 class="bullet">Active filter pills</h1>
+        <pre class="bullet">| "Foobar" (X) | Part Time, Casual (X) |</pre>
+        <hr>
+        <ul>
+          <li>Each pill needs a model with "text" and "reset"</li>
+          <li>There might only be a couple of pills visible</li>
+        </ul>
+      </section>
+      <section>
+        <pre class="bullet"><code class="language-javascript">app.config(function(DelegatorProvider) {
+
+  DelegatorProvider.service('PillPresenterDelegator', {
+  
+    interface: {
+      'present': 'truthy'
+    },
+    
+    delegates: [
+      'KeywordsPillPresenter',
+      'SortByPillPresenter',
+      'WorkTypePillPresenter',
+      ...
+    ]
+    
+  );
+  
+});
+</code></pre>
+      </section>
+      <section>
+        <h2 class="bullet">The delegator runs all pill presenters</h2>
+        <h3 class="bullet">And iterates over the results:</h3>
+        <pre class="bullet"><code class="language-markup">&lt;div ng-repeat="pill in pillPresenters"&gt;
+  &lt;div&gt;{{ pill.text }}&lt;/div&gt;
+  &lt;div ng-click="pill.reset()"&gt;X&lt;/div&gt;
+&lt;/div&gt;
+</code></pre>
+      </section>
+      <section>
+        <h1>Any other obvious uses?</h1>
+      </section>
+      <section>
+        <h2 class="bullet">Validation</h2>
+        <pre class="bullet"><code class="language-javascript">app.config(function(DelegatorProvider) {
+
+  DelegatorProvider.service('FilterValidatorDelegator', {
+  
+    interface: {
+      'isValid': 'all'
+    },
+    
+    delegates: [
+      'KeywordsFilterValidator',
+      'SortByFilterValidator',
+      'WorkTypeFilterValidator',
+      ...
+    ]
+    
+  );
+  
+});
+</code></pre>
+      </section>
+      <section>
+        <h2 class="bullet">Delegator Strategies</h2>
+        <hr>
+        <ul>
+          <li>map</li>
+          <li>merge</li>
+          <li>truthy</li>
+          <li>any</li>
+          <li>all</li>
+          <li>none</li>
+          <li>custom!</li>
+        </ul>
+      </section>
+      <section>
+        <h2 class="bullet">Creating new strategies</h2>
+        <h3 class="bullet">They're just services</h3>
+        <pre class="bullet"><code class="language-javascript">app.service('TextDelegatorStrategy', function(MapDelegatorStrategy) {
+
+    return function(services, args) {
+      return MapDelegatorStrategy(services, args).join(', ');
+    };
+    
+});</code></pre>
+        <pre class="bullet"><code class="language-javascript">interface: {
+  'toText': 'text'
+}
+</code></pre>
+      </section>
+      <section>
+        <h1 class="bullet">Moral of the story</h1>
+        <h3 class="bullet">Want to split up a large service into smaller ones?</h3>
+        <p class="bullet">Reach for <a href="https://github.com/markdalgleish/angular-delegator">angular-delegator</a></p>
+        <hr>
+        <pre class="bullet"><code class="language-bash">$ bower install --save angular-delegator
+</code></pre>
+      </section>
+      <section>
+        <h1>Thank you!</h1><img src="images/profile.jpg" class="avatar">
+        <h3><a href="http://twitter.com/markdalgleish">@markdalgleish</a></h3>
+      </section>
+    </article>
+    <script src="scripts/scripts.js"></script>
+  </body>
+</html>
