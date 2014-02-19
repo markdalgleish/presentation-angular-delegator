@@ -1,0 +1,353 @@
+doctype html
+html
+  head
+    meta(charset='utf-8')
+    meta(name='viewport', content='width=device-width, initial-scale=1, maximum-scale=1')
+    title Angular Delegator
+
+    link(href='http://fonts.googleapis.com/css?family=Lato:300,400', rel='stylesheet', type='text/css')
+
+    // build:css styles/styles.css
+    //- Check out 'src/bower_components/prism/themes/' for available themes
+    link(rel='stylesheet', type='text/css', href='bower_components/prism/themes/prism-tomorrow.css')
+    link(rel='stylesheet', type='text/css', href='styles/main.css')
+    // endbuild
+
+  body
+
+    article
+
+      section
+        h1 Angular Delegator
+        h3 The Story of the Missing Abstraction
+        img.avatar(src='images/profile.jpg')
+        h3 <a href="http://twitter.com/markdalgleish">@markdalgleish</a>
+
+      section
+        h1.bullet The Problem
+        h3.bullet Splitting large services into smaller ones
+        ul
+          li It's good software design, but...
+          li It requires a lot of glue code and repetitive tests.
+
+      section(data-bespoke-state='emphatic')
+        h1.bullet The Missing Abstraction
+        h2.bullet Prologue
+        h3.bullet We Were Writing a Search App
+
+      section
+        h2.bullet Filters Model
+        h3.bullet The core model in our app
+        hr
+        pre.bullet
+          code.language-javascript.
+            app.value('filters', {
+
+              keywords: "",
+              sortBy: "relevance",
+              workTypes: [],
+              ...
+
+            });
+
+      section
+        h2.bullet URL Parameters
+        h3.bullet Filters model needs to be serialized and deserialized:
+        pre.bullet
+          code.language-clike.
+            /results?keywords=foo&amp;workTypes=0,1,2
+
+      section
+        h2.bullet Whenever the route changes
+        h3.bullet We need to sync the filters model with the URL
+        pre.bullet
+          code.language-javascript.
+            $rootScope.$on('$stateChangeSuccess',
+
+              function(event, toState, toParams) {
+                _.extend(filters, ParamsAdapter.toFilters(toParams));
+              }
+
+            );
+        hr
+        p.bullet (We're using <a href="https://github.com/angular-ui/ui-router">ui-router</a>)
+
+      section
+        h2.bullet.name ParamsAdapter
+        h3.bullet Two methods:
+        ul
+          li toParams
+          li fromParams
+
+      section
+        h2.bullet It started small
+        h3.bullet Then it grew and grew
+        p.bullet And the tests grew. And grew.
+        p.bullet It started to suck.
+
+      section
+        h2.bullet Separate those concerns!
+        h3.bullet Let's break it up into smaller services
+        ul
+          li KeywordsParamsAdapter
+          li SalaryParamsAdapter
+          li WorkTypeParamsAdapter
+          li etc...
+
+      section
+        h2.bullet We're On The Right Track...
+        h3.bullet Lots of small services with the same interface
+        p.bullet So what does ParamsAdapter look like?
+
+      section
+        pre
+          code.language-javascript.
+            app.service('ParamsAdapter', function(Foo, Bar, Baz) {
+
+              this.toFilters = function(params) {
+                return _.extend({},
+                  Foo.toFilters(params),
+                  Bar.toFilters(params),
+                  Baz.toFilters(params)
+                );
+              };
+
+              this.fromFilters = function(filters) {
+                return _.extend({},
+                  Foo.fromFilters(filters),
+                  Bar.fromFilters(filters),
+                  Baz.fromFilters(filters)
+                );
+              };
+
+            });
+
+      section
+        h2.bullet This seemed verbose, but OK
+        h3.bullet Until we wrote the tests
+        ul
+          li Lots of repetitive boilerplate
+          li Adding new adapters = lots of copy + paste
+
+      section(data-bespoke-state='emphatic')
+        h1.bullet The Missing Abstraction
+        h2.bullet Act One
+        h3.bullet Configuring Service Arrays
+
+      section
+        h2.bullet Arrays of services
+        h3.bullet Configured with Angular Delegator
+        hr
+        pre.bullet
+          code.language-javascript.
+            app.config(function(DelegatorProvider) {
+
+              DelegatorProvider.set('ParamsAdapters', [
+                'KeywordsParamsAdapter',
+                'SalaryParamsAdapter',
+                'WorkTypeParamsAdapter',
+                ...
+              ]);
+
+            });
+
+      section
+        h2.bullet We can now reference this service array
+        h3.bullet Inside our 'ParamsAdapter' service
+
+      section
+        pre.bullet
+          code.language-javascript.
+            app.service('ParamsAdapter', function(Delegator) {
+
+              this.toFilters = function(params) {
+
+                // Merge the results of each service into a single object:
+                return _.extend.apply(_,
+                  _.map(Delegator.get('ParamsAdapters'), function(delegate) {
+                    return delegate.toFilters(params);
+                  })
+                );
+
+              };
+
+              // ...and again for 'fromFilters'
+
+            });
+
+      section
+        h3.bullet This is better, but it's starting to look like
+        h2.bullet Framework code
+
+      section(data-bespoke-state='emphatic')
+        h1.bullet The Missing Abstraction
+        h2.bullet Act Two
+        h3.bullet Angular Delegator Gets Smarter
+
+      section
+        h2.bullet Let's work at a higher level
+        h3.bullet We're manually creating a service that talks to 'Delegator'
+
+      section
+        h1.bullet What if...
+        h3.bullet Angular Delegator could create the service for us?
+
+      section
+        pre.bullet
+          code.language-javascript.
+            app.config(function(DelegatorProvider) {
+
+              DelegatorProvider.service('ParamsAdaptersDelegator', {
+
+                interface: {
+                  'toFilters': 'merge',
+                  'fromFilters': 'merge'
+                },
+
+                delegates: [
+                  'KeywordsParamsAdapter',
+                  'SalaryParamsAdapter',
+                  'WorkTypeParamsAdapter',
+                  ...
+                ]
+
+              );
+
+            });
+
+      section
+        h2.bullet Now we're free to delete code
+        h3.bullet We no longer need 'ParamsAdapter' or its test
+
+      section(data-bespoke-state='emphatic')
+        h1.bullet The Missing Abstraction
+        h2.bullet Act Three
+        h3.bullet Anuglar Delegator Proves Itself
+
+      section
+        h2.bullet We now have a clean way to break up our services
+        h3.bullet We started to notice other uses of this pattern
+
+      section
+        h1.bullet Active filter pills
+        pre.bullet | "Foobar" (X) | Part Time, Casual (X) |
+        hr
+        ul
+          li Each pill needs a model with "text" and "reset"
+          li There might only be a couple of pills visible
+
+      section
+        pre.bullet
+          code.language-javascript.
+            app.config(function(DelegatorProvider) {
+
+              DelegatorProvider.service('PillPresenterDelegator', {
+
+                interface: {
+                  'present': 'truthy'
+                },
+
+                delegates: [
+                  'KeywordsPillPresenter',
+                  'SortByPillPresenter',
+                  'WorkTypePillPresenter',
+                  ...
+                ]
+
+              );
+
+            });
+
+      section
+        h2.bullet The delegator runs all pill presenters
+        h3.bullet And iterates over the results:
+        pre.bullet
+          code.language-markup.
+            &lt;div ng-repeat="pill in pillPresenters"&gt;
+              &lt;div&gt;{{ pill.text }}&lt;/div&gt;
+              &lt;div ng-click="pill.reset()"&gt;X&lt;/div&gt;
+            &lt;/div&gt;
+
+      section
+        h1 Any other obvious uses?
+
+      section
+        h2.bullet Validation
+        pre.bullet
+          code.language-javascript.
+            app.config(function(DelegatorProvider) {
+
+              DelegatorProvider.service('FilterValidatorDelegator', {
+
+                interface: {
+                  'isValid': 'all'
+                },
+
+                delegates: [
+                  'KeywordsFilterValidator',
+                  'SortByFilterValidator',
+                  'WorkTypeFilterValidator',
+                  ...
+                ]
+
+              );
+
+            });
+
+      section
+        h2.bullet Delegator Strategies
+        hr
+        ul
+          li map
+          li merge
+          li truthy
+          li any
+          li all
+          li none
+          li custom!
+
+      section
+        h2.bullet Creating new strategies
+        h3.bullet They're just services
+        pre.bullet
+          code.language-javascript.
+            app.service('TextDelegatorStrategy', function(MapDelegatorStrategy) {
+
+                return function(services, args) {
+                  return MapDelegatorStrategy(services, args).join(', ');
+                };
+
+            });
+        pre.bullet
+          code.language-javascript.
+            interface: {
+              'toText': 'text'
+            }
+
+      section
+        h1.bullet Moral of the story
+        h3.bullet Want to split up a large service into smaller ones?
+        p.bullet Reach for <a href="https://github.com/markdalgleish/angular-delegator">angular-delegator</a>
+        hr
+        pre.bullet
+          code.language-bash.
+            $ bower install --save angular-delegator
+
+      section
+        h1 Thank you!
+        img.avatar(src='images/profile.jpg')
+        h3 <a href="http://twitter.com/markdalgleish">@markdalgleish</a>
+
+
+    // build:js scripts/scripts.js
+    script(src='bower_components/bespoke.js/dist/bespoke.min.js')
+    script(src='bower_components/bespoke-keys/dist/bespoke-keys.min.js')
+    script(src='bower_components/bespoke-touch/dist/bespoke-touch.min.js')
+    script(src='bower_components/bespoke-bullets/dist/bespoke-bullets.min.js')
+    script(src='bower_components/bespoke-scale/dist/bespoke-scale.min.js')
+    script(src='bower_components/bespoke-hash/dist/bespoke-hash.min.js')
+    script(src='bower_components/bespoke-progress/dist/bespoke-progress.min.js')
+    script(src='bower_components/bespoke-state/dist/bespoke-state.min.js')
+    script(src='bower_components/prism/prism.js')
+    script(src='scripts/main.js')
+    // endbuild
